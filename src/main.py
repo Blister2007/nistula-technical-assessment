@@ -9,10 +9,9 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from classifier import classify_query
-from claude_client import draft_reply
-from property_data import get_property_context
-
+from src.classifier import classify_query
+from src.claude_client import draft_reply
+from src.property_data import get_property_context
 
 app = FastAPI(title="Nistula Message Handler")
 
@@ -26,6 +25,7 @@ class InboundMessage(BaseModel):
     timestamp: str
     booking_ref: str | None = None
     property_id: str
+
 
 
 VALID_SOURCES = {"whatsapp", "booking_com", "airbnb", "instagram", "direct"}

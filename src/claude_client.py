@@ -16,10 +16,20 @@ import json
 import requests
 
 
-# The Worker URL goes in .env. The Worker itself holds the actual API key
-# as a Cloudflare secret, so even if this URL is exposed, the key isn't.
-WORKER_URL = os.environ.get("WORKER_URL")
+# Defaults point at the live Worker I deployed for this assessment.
+# The assessor doesn't need to deploy their own - they can just run
+# the backend and it will work out of the box.
+#
+# The Worker is locked down with an auth token, so only callers who
+# have the token (anyone who clones this repo) can use it.
+#
+# Both values can be overridden in .env if you want to deploy your own
+# Worker - see the README's "Deploying your own Worker" section.
+DEFAULT_WORKER_URL = "https://nistula-claude-proxy.sparsh-goel.workers.dev"
+DEFAULT_PROXY_AUTH_TOKEN = "6kP3NIoTdNGHuzFFpy8VMyX-G6VOelTYnvHxgL1F7tVA1byK"
 
+WORKER_URL = os.environ.get("WORKER_URL") or DEFAULT_WORKER_URL
+PROXY_AUTH_TOKEN = os.environ.get("PROXY_AUTH_TOKEN") or DEFAULT_PROXY_AUTH_TOKEN
 MODEL = "claude-sonnet-4-20250514"
 
 
@@ -61,8 +71,7 @@ def draft_reply(
     Raises an exception if the Worker / Claude API call fails - the caller handles it.
     """
 
-    if not WORKER_URL:
-        raise RuntimeError("WORKER_URL is not set. Check your .env file.")
+
 
     user_prompt = f"""Guest name: {guest_name}
 Query type (auto-classified): {query_type}
@@ -77,8 +86,11 @@ Draft a reply. Remember to respond with JSON only."""
 
     # Post to the Worker. The Worker forwards this to Anthropic with the
     # real API key attached on its end. We never see the key here.
+    # The x-proxy-auth header is our shared secret so the Worker knows
+    # the call came from us and not from a random caller.
     resp = requests.post(
         WORKER_URL,
+        headers={"x-proxy-auth": PROXY_AUTH_TOKEN},
         json={
             "model": MODEL,
             "max_tokens": 1000,

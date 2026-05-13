@@ -1,23 +1,25 @@
 /**
- * Cloudflare Worker — Anthropic API Proxy
+ * Cloudflare Worker — Anthropic API Proxy (with auth)
  *
- * Holds the Anthropic API key as a Cloudflare secret so it never leaks
- * into the backend codebase or the deployed environment.
+ * Two secrets live here as Cloudflare environment variables:
  *
- * The Nistula FastAPI backend posts to this Worker's URL. The Worker
- * attaches the real key and forwards the request to api.anthropic.com,
- * then passes the response straight back.
+ *   ANTHROPIC_API_KEY  - the real Anthropic key (used to call api.anthropic.com)
+ *   PROXY_AUTH_TOKEN   - a shared secret between this Worker and our backend
  *
- * Same pattern I used for Thine (the Memory Debt Audit tool).
+ * Every incoming request must include the header:
+ *     x-proxy-auth: <PROXY_AUTH_TOKEN value>
  *
- * Setup:
- *   1. Install wrangler: npm install -g wrangler
+ * If the header is missing or wrong, the Worker returns 401. Without this,
+ * anyone who knew the Worker URL could call it and burn the Anthropic key.
+ *
+ * Setup (one time):
+ *   1. npm install -g wrangler
  *   2. wrangler login
- *   3. wrangler secret put ANTHROPIC_API_KEY   (paste the key when prompted)
- *   4. wrangler deploy
+ *   3. wrangler secret put ANTHROPIC_API_KEY   (paste the Anthropic key)
+ *   4. wrangler secret put PROXY_AUTH_TOKEN    (paste any long random string)
+ *   5. wrangler deploy
  *
- *   Wrangler prints a URL like https://nistula-claude-proxy.your-name.workers.dev
- *   Put that URL in your backend .env as WORKER_URL.
+ * Put the WORKER_URL and the same PROXY_AUTH_TOKEN value into the backend .env.
  */
 
 export default {
@@ -28,7 +30,7 @@ export default {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST",
-          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Allow-Headers": "Content-Type, x-proxy-auth",
         },
       });
     }
@@ -37,12 +39,25 @@ export default {
       return new Response("Method not allowed", { status: 405 });
     }
 
-    // The API key lives only here, as a Cloudflare secret.
-    const API_KEY = env.ANTHROPIC_API_KEY;
-    if (!API_KEY) {
+    // ── AUTH CHECK ──────────────────────────────────────────────
+    // Only requests with the right shared-secret header get through.
+    const expectedToken = env.PROXY_AUTH_TOKEN;
+    const providedToken = request.headers.get("x-proxy-auth");
+
+    if (!expectedToken) {
+      return jsonError("Proxy auth token not configured on Worker", 500);
+    }
+    if (providedToken !== expectedToken) {
+      return jsonError("Unauthorized", 401);
+    }
+
+    // ── ANTHROPIC KEY CHECK ─────────────────────────────────────
+    const apiKey = env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
       return jsonError("API key not configured on Worker", 500);
     }
 
+    // ── FORWARD TO ANTHROPIC ────────────────────────────────────
     try {
       const body = await request.json();
 
@@ -50,7 +65,7 @@ export default {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": API_KEY,
+          "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({

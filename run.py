@@ -1,9 +1,4 @@
-"""
-Run script. Loads .env then starts the server.
 
-Use: python run.py
-Or:  uvicorn src.main:app --reload
-"""
 
 from dotenv import load_dotenv
 load_dotenv()

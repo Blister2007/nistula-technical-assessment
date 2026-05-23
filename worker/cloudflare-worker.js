@@ -1,26 +1,4 @@
-/**
- * Cloudflare Worker — Anthropic API Proxy (with auth)
- *
- * Two secrets live here as Cloudflare environment variables:
- *
- *   ANTHROPIC_API_KEY  - the real Anthropic key (used to call api.anthropic.com)
- *   PROXY_AUTH_TOKEN   - a shared secret between this Worker and our backend
- *
- * Every incoming request must include the header:
- *     x-proxy-auth: <PROXY_AUTH_TOKEN value>
- *
- * If the header is missing or wrong, the Worker returns 401. Without this,
- * anyone who knew the Worker URL could call it and burn the Anthropic key.
- *
- * Setup (one time):
- *   1. npm install -g wrangler
- *   2. wrangler login
- *   3. wrangler secret put ANTHROPIC_API_KEY   (paste the Anthropic key)
- *   4. wrangler secret put PROXY_AUTH_TOKEN    (paste any long random string)
- *   5. wrangler deploy
- *
- * Put the WORKER_URL and the same PROXY_AUTH_TOKEN value into the backend .env.
- */
+
 
 export default {
   async fetch(request, env) {

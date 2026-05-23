@@ -26,10 +26,9 @@ import requests
 # Both values can be overridden in .env if you want to deploy your own
 # Worker - see the README's "Deploying your own Worker" section.
 DEFAULT_WORKER_URL = "https://nistula-claude-proxy.sparsh-goel.workers.dev"
-DEFAULT_PROXY_AUTH_TOKEN = "6kP3NIoTdNGHuzFFpy8VMyX-G6VOelTYnvHxgL1F7tVA1byK"
 
 WORKER_URL = os.environ.get("WORKER_URL") or DEFAULT_WORKER_URL
-PROXY_AUTH_TOKEN = os.environ.get("PROXY_AUTH_TOKEN") or DEFAULT_PROXY_AUTH_TOKEN
+PROXY_AUTH_TOKEN = os.environ.get("PROXY_AUTH_TOKEN")
 MODEL = "claude-sonnet-4-20250514"
 
 
@@ -72,9 +71,10 @@ def draft_reply(
     """
 
 
+    if not PROXY_AUTH_TOKEN:
+        raise RuntimeError("PROXY_AUTH_TOKEN not set. Copy .env.example to .env and add your token. See README.")
 
-    user_prompt = f"""Guest name: {guest_name}
-Query type (auto-classified): {query_type}
+    user_prompt = f"""Guest name: {guest_name}Query type (auto-classified): {query_type}
 
 Property context:
 {property_context}

@@ -21,21 +21,50 @@ Built in Python with FastAPI. The Claude API is accessed through a Cloudflare Wo
         |  POST + x-proxy-auth header
         v
    Cloudflare Worker proxy (worker/cloudflare-worker.js)
-   Holds ANTHROPIC_API_KEY + PROXY_AUTH_TOKEN
+   Holds ANTHROPIC_API_KEY + PROXY_AUTH_TOKEN as secrets
    Rejects calls without the right auth header
         |
-        |  x-api-key: sk-ant-...
+        |  x-api-key: <Anthropic key>
         v
    Anthropic API
 ```
 
-Why this shape? Same pattern I used for my Thine project (`blister2007.github.io/memory-audit`). The API key is a Cloudflare secret, not an env var on the backend. The Worker is additionally gated by a shared auth token, so even if the Worker URL leaks, random callers cannot burn the key.
+Why this shape? Same pattern I used for my Thine project (`blister2007.github.io/memory-audit`). The API key is a Cloudflare secret, not an env var on the backend. The Worker is additionally gated by a shared auth token, so even if the Worker URL leaks, random callers cannot use it.
 
 ---
 
 ## Quick Start
 
-The Cloudflare Worker is already deployed and live. You only need to run the Python backend.
+This backend talks to Claude through a Cloudflare Worker proxy that holds the API key as an encrypted secret. To run it, you deploy your own Worker (a few minutes) and point the backend at it.
+
+### 1. Deploy the Worker
+
+```bash
+cd worker
+npm install -g wrangler
+wrangler login
+
+wrangler secret put ANTHROPIC_API_KEY      # paste your Anthropic key
+wrangler secret put PROXY_AUTH_TOKEN        # paste any long random string
+
+wrangler deploy                              # prints your Worker URL
+```
+
+### 2. Configure the backend
+
+```bash
+cd ..
+cp .env.example .env
+```
+
+Edit `.env` and set both values:
+
+```
+WORKER_URL=https://your-worker.workers.dev
+PROXY_AUTH_TOKEN=the-same-random-string-from-step-1
+```
+
+### 3. Run it
 
 ```bash
 pip install -r requirements.txt
@@ -51,12 +80,6 @@ python tests/test_webhook.py
 
 This fires 5 sample messages covering availability, pricing, WiFi, special requests, and a complaint.
 
-That is it. No `.env`, no API key setup, no Cloudflare account needed. The backend talks to a live Worker I deployed for this assessment, which holds the Anthropic key as an encrypted secret on Cloudflare servers.
-
-### Deploying your own Worker (optional)
-
-If you want full reproducibility, e.g. use your own Anthropic key or deploy the Worker under your account, see the **Deploying your own Worker** section at the bottom of this README.
-
 ---
 
 ## Project Structure
@@ -67,7 +90,7 @@ nistula-technical-assessment/
   schema.sql             # Part 2 - PostgreSQL schema with comments
   thinking.md            # Part 3 - the 3am scenario answers
   requirements.txt       # Python dependencies
-  .env.example           # template - only needed if deploying your own Worker
+  .env.example           # template for WORKER_URL and PROXY_AUTH_TOKEN
   run.py                 # entry point - loads .env and starts uvicorn
   src/
     main.py              # the FastAPI app and the /webhook/message endpoint
@@ -143,7 +166,7 @@ These caps live in `claude_client.py` in `apply_confidence_rules()`. They are de
 
 **Why a Cloudflare Worker proxy with shared-secret auth?** Four reasons. One, the API key is a Cloudflare secret, not an env var sitting on every machine that runs the backend. Two, the `x-proxy-auth` header check means even if someone scrapes the Worker URL from logs or a screenshot, they cannot actually use it. Three, it is a clean swap point. If we ever move from Claude to Claude + GPT fallback, only the Worker changes. Four, it gives a free CDN-edge layer where we can later add rate limiting and request logging without touching the backend.
 
-**Why FastAPI?** Native async support, automatic OpenAPI docs at `/docs`, Pydantic validation for free. For a webhook handler, it is the right shape.
+**Why FastAPI?** Pydantic gives request validation for free, it is async-native for the I/O-bound Claude calls, and it auto-generates API docs at `/docs`. For a webhook that validates incoming JSON, calls an API, and responds, it is the right shape.
 
 **Why a keyword classifier instead of using Claude to classify?** Latency and cost. Classification is the first thing that runs and gates the rest of the flow. A 5ms keyword pass beats a 500ms API round-trip when keywords get us roughly 80 percent accuracy on the six well-defined categories. If accuracy slips below a threshold in production, swap in a Claude-based classifier behind the same `classify_query()` function. Nothing else changes.
 
@@ -179,32 +202,6 @@ Or run `python tests/test_webhook.py` to fire all 5 in sequence.
 ## A Note on Code Style
 
 I deliberately kept this readable over clever. Small files, plain Python, comments where the why is not obvious from the code. If a teammate joins next week, this should take them 15 minutes to understand top-to-bottom, not 2 hours.
-
----
-
-## Deploying Your Own Worker (Optional)
-
-If you want to deploy the Worker under your own Cloudflare account:
-
-```bash
-cd worker
-npm install -g wrangler
-wrangler login
-
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put PROXY_AUTH_TOKEN
-
-wrangler deploy
-```
-
-Then create a `.env` file in the repo root:
-
-```
-WORKER_URL=https://your-worker.workers.dev
-PROXY_AUTH_TOKEN=the-same-random-string
-```
-
-The backend reads these env vars and overrides the defaults if they are set. If `.env` is missing or the vars are not set, the backend falls back to the live Worker I deployed for this assessment.
 
 ---
 

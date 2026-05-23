@@ -122,5 +122,4 @@ CREATE TABLE agents (
 );
 
 
--e guest
--- profile that compounds in value across stays - is forever.
+
